@@ -7800,13 +7800,11 @@ dependencies = [
  "gdbstub",
  "goblin",
  "hash32",
- "libc",
  "log",
  "rand 0.8.5",
  "rustc-demangle",
  "scroll",
  "thiserror",
- "winapi 0.3.9",
 ]
 
 [[package]]

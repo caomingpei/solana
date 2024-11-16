@@ -340,7 +340,7 @@ impl LoadedProgram {
             metrics.verify_code_us = verify_code_time.as_us();
         }
 
-        #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+        #[cfg(all(not(target_os = "windows"), target_arch = "x86_64", feature = "rbpf_jit"))]
         {
             let mut jit_compile_time = Measure::start("jit_compile_time");
             executable.jit_compile()?;
