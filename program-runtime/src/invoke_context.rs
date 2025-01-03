@@ -44,6 +44,9 @@ use {
     },
 };
 
+use common::relayer::SenderManager;
+use std::sync::Mutex;
+
 pub type BuiltinFunctionWithContext = BuiltinFunction<InvokeContext<'static>>;
 
 /// Adapter so we can unify the interfaces of built-in programs and syscalls
@@ -173,6 +176,7 @@ pub struct InvokeContext<'a> {
     pub lamports_per_signature: u64,
     pub syscall_context: Vec<Option<SyscallContext>>,
     traces: Vec<Vec<[u64; 12]>>,
+    pub sender_manager: &'static Mutex<SenderManager>,
 }
 
 impl<'a> InvokeContext<'a> {
@@ -187,6 +191,7 @@ impl<'a> InvokeContext<'a> {
         feature_set: Arc<FeatureSet>,
         blockhash: Hash,
         lamports_per_signature: u64,
+        sender_manager: &'static Mutex<SenderManager>,
     ) -> Self {
         Self {
             transaction_context,
@@ -203,6 +208,7 @@ impl<'a> InvokeContext<'a> {
             lamports_per_signature,
             syscall_context: Vec::new(),
             traces: Vec::new(),
+            sender_manager,
         }
     }
 
@@ -509,6 +515,7 @@ impl<'a> InvokeContext<'a> {
             unsafe { std::mem::transmute::<&mut InvokeContext, &mut InvokeContext>(self) },
             empty_memory_mapping,
             0,
+            self.sender_manager,
         );
         vm.invoke_function(function);
         let result = match vm.program_result {
@@ -638,6 +645,7 @@ macro_rules! with_mock_invoke_context {
         $transaction_context:ident,
         $transaction_accounts:expr $(,)?
     ) => {
+        use common::relayer::SenderManager;
         use {
             solana_sdk::{
                 account::ReadableAccount, feature_set::FeatureSet, hash::Hash, sysvar::rent::Rent,
@@ -687,6 +695,7 @@ macro_rules! with_mock_invoke_context {
             Arc::new(FeatureSet::all_enabled()),
             Hash::default(),
             0,
+            SenderManager::instance(),
         );
     };
 }

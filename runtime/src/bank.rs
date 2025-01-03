@@ -205,6 +205,8 @@ use {
     },
 };
 
+use common::relayer::SenderManager;
+
 /// params to `verify_accounts_hash`
 struct VerifyAccountsHashConfig {
     test_hash_calculation: bool,
@@ -509,6 +511,7 @@ impl PartialEq for Bank {
             return true;
         }
         let Self {
+            sender_manager: _,
             skipped_rewrites: _,
             rc: _,
             status_cache: _,
@@ -833,6 +836,8 @@ pub struct Bank {
     pub check_program_modification_slot: bool,
 
     epoch_reward_status: EpochRewardStatus,
+
+    sender_manager: &'static Mutex<SenderManager>,
 }
 
 struct VoteWithStakeDelegations {
@@ -955,6 +960,7 @@ pub(super) enum RewardInterval {
 
 impl Bank {
     fn default_with_accounts(accounts: Accounts) -> Self {
+        let sender_manager = SenderManager::instance();
         let mut bank = Self {
             skipped_rewrites: Mutex::default(),
             incremental_snapshot_persistence: None,
@@ -1020,6 +1026,7 @@ impl Bank {
             ))),
             check_program_modification_slot: false,
             epoch_reward_status: EpochRewardStatus::default(),
+            sender_manager: sender_manager,
         };
 
         let accounts_data_size_initial = bank.get_total_accounts_stats().unwrap().data_len as u64;
@@ -1258,6 +1265,7 @@ impl Bank {
 
         let accounts_data_size_initial = parent.load_accounts_data_size();
         let mut new = Self {
+            sender_manager: SenderManager::instance(),
             skipped_rewrites: Mutex::default(),
             incremental_snapshot_persistence: None,
             rc,
@@ -1768,6 +1776,7 @@ impl Bank {
         );
         let stakes_accounts_load_duration = now.elapsed();
         let mut bank = Self {
+            sender_manager: SenderManager::instance(),
             skipped_rewrites: Mutex::default(),
             incremental_snapshot_persistence: fields.incremental_snapshot_persistence,
             rc: bank_rc,
@@ -4830,6 +4839,7 @@ impl Bank {
             blockhash,
             lamports_per_signature,
             &mut executed_units,
+            self.sender_manager,
         );
         process_message_time.stop();
 

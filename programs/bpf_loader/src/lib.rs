@@ -4,6 +4,9 @@
 pub mod serialization;
 pub mod syscalls;
 
+use common::relayer::SenderManager;
+use std::sync::Mutex;
+
 use {
     solana_measure::measure::Measure,
     solana_program_runtime::{
@@ -263,6 +266,7 @@ pub fn create_vm<'a, 'b>(
         invoke_context,
         memory_mapping,
         stack_size,
+        SenderManager::instance(),
     ))
 }
 

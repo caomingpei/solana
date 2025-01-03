@@ -36,6 +36,9 @@ use {
     },
 };
 
+use common::relayer::SenderManager;
+use std::sync::Mutex;
+
 pub const DEFAULT_COMPUTE_UNITS: u64 = 2_000;
 
 pub fn get_state(data: &[u8]) -> Result<&LoaderV4State, InstructionError> {
@@ -136,6 +139,7 @@ pub fn create_vm<'a, 'b>(
         invoke_context,
         memory_mapping,
         stack_len,
+        SenderManager::instance(),
     ))
 }
 

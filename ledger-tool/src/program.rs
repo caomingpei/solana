@@ -40,6 +40,9 @@ use {
     },
 };
 
+use common::relayer::SenderManager;
+use std::sync::Mutex;
+
 // The ELF magic number [ELFMAG0, ELFMAG1, ELFGMAG2, ELFMAG3] as defined by
 // https://github.com/torvalds/linux/blob/master/include/uapi/linux/elf.h
 const ELF_MAGIC_NUMBER: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
@@ -363,7 +366,11 @@ fn load_program<'a>(
         })
     }
     .unwrap();
-    #[cfg(all(not(target_os = "windows"), target_arch = "x86_64", feature = "rbpf_jit"))]
+    #[cfg(all(
+        not(target_os = "windows"),
+        target_arch = "x86_64",
+        feature = "rbpf_jit"
+    ))]
     verified_executable.jit_compile().unwrap();
     unsafe {
         std::mem::transmute::<Executable<InvokeContext<'static>>, Executable<InvokeContext<'a>>>(

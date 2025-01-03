@@ -23,6 +23,9 @@ use {
     std::{cell::RefCell, rc::Rc, sync::Arc},
 };
 
+use common::relayer::SenderManager;
+use std::sync::Mutex;
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct MessageProcessor {}
 
@@ -56,6 +59,7 @@ impl MessageProcessor {
         blockhash: Hash,
         lamports_per_signature: u64,
         accumulated_consumed_units: &mut u64,
+        sender_manager: &'static Mutex<SenderManager>,
     ) -> Result<(), TransactionError> {
         let mut invoke_context = InvokeContext::new(
             transaction_context,
@@ -67,6 +71,7 @@ impl MessageProcessor {
             feature_set,
             blockhash,
             lamports_per_signature,
+            sender_manager,
         );
 
         debug_assert_eq!(program_indices.len(), message.instructions().len());
