@@ -4,7 +4,7 @@
 pub mod serialization;
 pub mod syscalls;
 
-use common::relayer::SenderManager;
+use common::message::SenderManager;
 use std::sync::Mutex;
 
 use {

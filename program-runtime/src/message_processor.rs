@@ -23,7 +23,7 @@ use {
     std::{cell::RefCell, rc::Rc, sync::Arc},
 };
 
-use common::relayer::SenderManager;
+use common::message::SenderManager;
 use std::sync::Mutex;
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]

@@ -44,7 +44,7 @@ use {
     },
 };
 
-use common::relayer::SenderManager;
+use common::message::SenderManager;
 use std::sync::Mutex;
 
 pub type BuiltinFunctionWithContext = BuiltinFunction<InvokeContext<'static>>;
@@ -645,7 +645,7 @@ macro_rules! with_mock_invoke_context {
         $transaction_context:ident,
         $transaction_accounts:expr $(,)?
     ) => {
-        use common::relayer::SenderManager;
+        use common::message::SenderManager;
         use {
             solana_sdk::{
                 account::ReadableAccount, feature_set::FeatureSet, hash::Hash, sysvar::rent::Rent,

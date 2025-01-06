@@ -205,7 +205,7 @@ use {
     },
 };
 
-use common::relayer::SenderManager;
+use common::message::SenderManager;
 
 /// params to `verify_accounts_hash`
 struct VerifyAccountsHashConfig {

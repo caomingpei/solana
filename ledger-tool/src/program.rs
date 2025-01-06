@@ -40,7 +40,7 @@ use {
     },
 };
 
-use common::relayer::SenderManager;
+use common::message::SenderManager;
 use std::sync::Mutex;
 
 // The ELF magic number [ELFMAG0, ELFMAG1, ELFGMAG2, ELFMAG3] as defined by

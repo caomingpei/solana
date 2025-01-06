@@ -36,7 +36,7 @@ use {
     },
 };
 
-use common::relayer::SenderManager;
+use common::message::SenderManager;
 use std::sync::Mutex;
 
 pub const DEFAULT_COMPUTE_UNITS: u64 = 2_000;
