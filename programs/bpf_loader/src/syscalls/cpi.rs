@@ -18,6 +18,10 @@ use {
     std::{mem, ptr},
 };
 
+use common::types::{Attribute, CommonAddress, TaintState};
+use instrument::taint::address_mapping;
+use instrument::Instrumenter;
+
 fn check_account_info_pointer(
     invoke_context: &InvokeContext,
     vm_addr: u64,
@@ -1065,6 +1069,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
     signers_seeds_addr: u64,
     signers_seeds_len: u64,
     memory_mapping: &MemoryMapping,
+    instrumenter: &Instrumenter,
 ) -> Result<u64, Error> {
     // CPI entry.
     //
@@ -1074,6 +1079,35 @@ fn cpi_common<S: SyscallInvokeSigned>(
         invoke_context,
         invoke_context.get_compute_budget().invoke_units,
     )?;
+
+    println!("history len = {}", instrumenter.taint_engine.history.len());
+
+    println!("account_infos_len = {}", account_infos_len);
+    println!("account_infos_addr = {:x}", account_infos_addr);
+
+    println!("signers_seeds_len = {}", signers_seeds_len);
+    println!("signers_seeds_addr = {:x}", signers_seeds_addr);
+    let account_infos_addr_common = address_mapping(account_infos_addr, 8);
+    let signers_seeds_addr_common = address_mapping(signers_seeds_addr, 8);
+    for (address, state) in instrumenter.taint_engine.state.iter() {
+        if let TaintState::Tainted { source, color } = state {
+            if let Attribute::Account { index, info } = color {
+                if *index == 0 {
+                    if address.address < 0x400000000 && address.address >= 0x200000000 {
+                        println!("addr = {:?}, taint_state = {:?}", address, state);
+                    }
+                }
+            }
+        }
+    }
+    for addr in account_infos_addr_common {
+        let taint_state = instrumenter.taint_engine.state.get(&addr);
+        println!("addr = {:?}, taint_state = {:?}", addr, taint_state);
+    }
+    for addr in signers_seeds_addr_common {
+        let taint_state = instrumenter.taint_engine.state.get(&addr);
+        println!("addr = {:?}, taint_state = {:?}", addr, taint_state);
+    }
 
     let instruction = S::translate_instruction(instruction_addr, memory_mapping, invoke_context)?;
     let transaction_context = &invoke_context.transaction_context;
