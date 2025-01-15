@@ -18,6 +18,7 @@ use {
     std::{mem, ptr},
 };
 
+use bs58;
 use common::types::{Attribute, CommonAddress, TaintState};
 use instrument::taint::address_mapping;
 use instrument::Instrumenter;
@@ -1087,27 +1088,6 @@ fn cpi_common<S: SyscallInvokeSigned>(
 
     println!("signers_seeds_len = {}", signers_seeds_len);
     println!("signers_seeds_addr = {:x}", signers_seeds_addr);
-    let account_infos_addr_common = address_mapping(account_infos_addr, 8);
-    let signers_seeds_addr_common = address_mapping(signers_seeds_addr, 8);
-    for (address, state) in instrumenter.taint_engine.state.iter() {
-        if let TaintState::Tainted { source, color } = state {
-            if let Attribute::Account { index, info } = color {
-                if *index == 0 {
-                    if address.address < 0x400000000 && address.address >= 0x200000000 {
-                        println!("addr = {:?}, taint_state = {:?}", address, state);
-                    }
-                }
-            }
-        }
-    }
-    for addr in account_infos_addr_common {
-        let taint_state = instrumenter.taint_engine.state.get(&addr);
-        println!("addr = {:?}, taint_state = {:?}", addr, taint_state);
-    }
-    for addr in signers_seeds_addr_common {
-        let taint_state = instrumenter.taint_engine.state.get(&addr);
-        println!("addr = {:?}, taint_state = {:?}", addr, taint_state);
-    }
 
     let instruction = S::translate_instruction(instruction_addr, memory_mapping, invoke_context)?;
     let transaction_context = &invoke_context.transaction_context;
@@ -1120,6 +1100,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
         memory_mapping,
         invoke_context,
     )?;
+
     let is_loader_deprecated = *instruction_context
         .try_borrow_last_program_account(transaction_context)?
         .get_owner()
@@ -1127,6 +1108,56 @@ fn cpi_common<S: SyscallInvokeSigned>(
     let (instruction_accounts, program_indices) =
         invoke_context.prepare_instruction(&instruction, &signers)?;
     check_authorized_program(&instruction.program_id, &instruction.data, invoke_context)?;
+
+    let (account_infos, account_info_keys) = translate_account_infos(
+        account_infos_addr,
+        account_infos_len,
+        |account_info: &AccountInfo| account_info.key as *const _ as u64,
+        memory_mapping,
+        invoke_context,
+    )?;
+
+    for pubkey in account_info_keys.iter() {
+        println!("pubkey = {:?}", *pubkey);
+    }
+
+    if signers_seeds_len > 0 {
+        let signers_seeds = translate_slice::<&[&[u8]]>(
+            memory_mapping,
+            signers_seeds_addr,
+            signers_seeds_len,
+            invoke_context.get_check_aligned(),
+        )?;
+        if signers_seeds.len() > MAX_SIGNERS {
+            return Err(Box::new(SyscallError::TooManySigners));
+        }
+        for signer_seeds in signers_seeds.iter() {
+            let untranslated_seeds = translate_slice::<&[u8]>(
+                memory_mapping,
+                signer_seeds.as_ptr() as *const _ as u64,
+                signer_seeds.len() as u64,
+                invoke_context.get_check_aligned(),
+            )?;
+            if untranslated_seeds.len() > MAX_SEEDS {
+                return Err(Box::new(InstructionError::MaxSeedLengthExceeded));
+            }
+            let seeds = untranslated_seeds
+                .iter()
+                .map(|untranslated_seed| {
+                    translate_slice::<u8>(
+                        memory_mapping,
+                        untranslated_seed.as_ptr() as *const _ as u64,
+                        untranslated_seed.len() as u64,
+                        invoke_context.get_check_aligned(),
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            for seed in seeds.iter() {
+                let base58_seed = bs58::encode(seed).into_string();
+                println!("signer_seed = {:?}", base58_seed);
+            }
+        }
+    }
 
     let mut accounts = S::translate_accounts(
         &instruction_accounts,

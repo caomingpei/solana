@@ -23,6 +23,7 @@ solana_rbpf = { workspace = true }
 thiserror = { workspace = true }
 instrument = { workspace = true }
 common = { workspace = true }
+bs58 = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
