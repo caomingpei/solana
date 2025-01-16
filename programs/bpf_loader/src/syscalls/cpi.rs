@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use {
     super::*,
     crate::serialization::account_data_region_memory_state,
@@ -1061,6 +1063,31 @@ fn check_authorized_program(
     Ok(())
 }
 
+enum CreateAccountType {
+    NotCreateAccount,
+    Normal,
+    PDA,
+}
+
+fn novafuzz_check_create_account(
+    program_id: &Pubkey,
+    instruction_data: &[u8],
+    signers_seeds: &[String],
+) -> CreateAccountType {
+    if *program_id != Pubkey::from_str("11111111111111111111111111111111").unwrap() {
+        return CreateAccountType::NotCreateAccount;
+    }
+    let instruction_discriminator = &instruction_data[0..4];
+    if instruction_discriminator != [0x00, 0x00, 0x00, 0x00] {
+        return CreateAccountType::NotCreateAccount;
+    } else {
+        if signers_seeds.len() == 0 {
+            return CreateAccountType::Normal;
+        }
+        return CreateAccountType::PDA;
+    }
+}
+
 /// Call process instruction, common to both Rust and C
 fn cpi_common<S: SyscallInvokeSigned>(
     invoke_context: &mut InvokeContext,
@@ -1080,14 +1107,6 @@ fn cpi_common<S: SyscallInvokeSigned>(
         invoke_context,
         invoke_context.get_compute_budget().invoke_units,
     )?;
-
-    println!("history len = {}", instrumenter.taint_engine.history.len());
-
-    println!("account_infos_len = {}", account_infos_len);
-    println!("account_infos_addr = {:x}", account_infos_addr);
-
-    println!("signers_seeds_len = {}", signers_seeds_len);
-    println!("signers_seeds_addr = {:x}", signers_seeds_addr);
 
     let instruction = S::translate_instruction(instruction_addr, memory_mapping, invoke_context)?;
     let transaction_context = &invoke_context.transaction_context;
@@ -1109,6 +1128,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
         invoke_context.prepare_instruction(&instruction, &signers)?;
     check_authorized_program(&instruction.program_id, &instruction.data, invoke_context)?;
 
+    // NovFuzz record creation syscall
     let (account_infos, account_info_keys) = translate_account_infos(
         account_infos_addr,
         account_infos_len,
@@ -1116,11 +1136,12 @@ fn cpi_common<S: SyscallInvokeSigned>(
         memory_mapping,
         invoke_context,
     )?;
+    let novafuzz_account_infos = account_info_keys.clone();
+    let novafuzz_instruction = &instruction;
 
-    for pubkey in account_info_keys.iter() {
-        println!("pubkey = {:?}", *pubkey);
-    }
-
+    // Store the seeds for instruction call.
+    let mut novafuzz_seeds = Vec::new();
+    // NovaFuzz: Translate the signers seeds part, gain two seeds
     if signers_seeds_len > 0 {
         let signers_seeds = translate_slice::<&[&[u8]]>(
             memory_mapping,
@@ -1154,7 +1175,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
                 .collect::<Result<Vec<_>, Error>>()?;
             for seed in seeds.iter() {
                 let base58_seed = bs58::encode(seed).into_string();
-                println!("signer_seed = {:?}", base58_seed);
+                novafuzz_seeds.push(base58_seed);
             }
         }
     }
@@ -1182,6 +1203,19 @@ fn cpi_common<S: SyscallInvokeSigned>(
     // re-bind to please the borrow checker
     let transaction_context = &invoke_context.transaction_context;
     let instruction_context = transaction_context.get_current_instruction_context()?;
+
+    // NovaFuzz: noraml CPI exit, but start storing the NovaFuzz record.
+    let create_account_type = novafuzz_check_create_account(
+        &novafuzz_instruction.program_id,
+        &novafuzz_instruction.data,
+        &novafuzz_seeds,
+    );
+
+    if let CreateAccountType::PDA = create_account_type {
+        println!("create pda");
+    } else if let CreateAccountType::Normal = create_account_type {
+        println!("create normal");
+    }
 
     // CPI exit.
     //
