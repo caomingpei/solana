@@ -1097,7 +1097,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
     signers_seeds_addr: u64,
     signers_seeds_len: u64,
     memory_mapping: &MemoryMapping,
-    instrumenter: &Instrumenter,
+    instrumenter: &mut Instrumenter,
 ) -> Result<u64, Error> {
     // CPI entry.
     //
@@ -1242,7 +1242,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
             }
         }
     }
-
+    println!("direct mapping: {:?}", direct_mapping);
     for (index_in_caller, caller_account) in accounts.iter_mut() {
         if let Some(caller_account) = caller_account {
             let mut callee_account = instruction_context
@@ -1254,6 +1254,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
                 caller_account,
                 &mut callee_account,
                 direct_mapping,
+                instrumenter,
             )?;
         }
     }
@@ -1390,6 +1391,7 @@ fn update_caller_account(
     caller_account: &mut CallerAccount,
     callee_account: &mut BorrowedAccount<'_>,
     direct_mapping: bool,
+    instrumenter: &mut Instrumenter, //NovaFuzz: add instrumenter
 ) -> Result<(), Error> {
     *caller_account.lamports = callee_account.get_lamports();
     *caller_account.owner = *callee_account.get_owner();
@@ -1401,6 +1403,8 @@ fn update_caller_account(
             caller_account.vm_data_addr,
             caller_account.original_data_len,
         )? {
+            // Austin comment: This part should be checking the memory layout?
+
             // Since each instruction account is directly mapped in a memory region with a *fixed*
             // length, upon returning from CPI we must ensure that the current capacity is at least
             // the original length (what is mapped in memory), so that the account's memory region
@@ -1528,6 +1532,22 @@ fn update_caller_account(
         }
         // this is the len field in the AccountInfo::data slice
         *caller_account.ref_to_len_in_vm.get_mut()? = post_len as u64;
+        // NovaFuzz: process the vm_addr for the caller account
+        println!("caller_account.vm_data_addr: {:?}", caller_account.vm_data_addr);
+        println!("caller_account.prev_len: {:?}", prev_len);
+        println!("caller_account.post_len: {:?}", post_len);
+        for i in 0..post_len {
+            // print the vm_addr for the caller account, in hex format
+            // println!("caller_account.vm_data_addr[{}]: {:x}", i, caller_account.vm_data_addr+i as u64);
+            let realloc_addr = caller_account.vm_data_addr+i as u64;
+            let attribute = instrumenter.semantic_input.mapping.get(&(realloc_addr - ebpf::MM_INPUT_START));
+            if attribute.is_some() {
+                instrumenter.data_extractor.insert(address_mapping(realloc_addr, 1)[0], attribute.unwrap().clone());
+            }else{
+                println!("syscall/cpi.rs/update_caller_account: caller_account attribute is none");
+            }
+        }
+        println!("data_extractor: {:?}", instrumenter.data_extractor.len());
 
         // this is the len field in the serialized parameters
         let serialized_len_ptr = translate_type_mut::<u64>(
