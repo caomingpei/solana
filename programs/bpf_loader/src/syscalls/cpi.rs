@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use {
     super::*,
     crate::serialization::account_data_region_memory_state,
@@ -17,6 +19,11 @@ use {
     },
     std::{mem, ptr},
 };
+
+use bs58;
+use common::types::{Attribute, CommonAddress, TaintState};
+use instrument::taint::address_mapping;
+use instrument::Instrumenter;
 
 fn check_account_info_pointer(
     invoke_context: &InvokeContext,
@@ -1056,6 +1063,31 @@ fn check_authorized_program(
     Ok(())
 }
 
+enum CreateAccountType {
+    NotCreateAccount,
+    Normal,
+    PDA,
+}
+
+fn novafuzz_check_create_account(
+    program_id: &Pubkey,
+    instruction_data: &[u8],
+    signers_seeds: &[String],
+) -> CreateAccountType {
+    if *program_id != Pubkey::from_str("11111111111111111111111111111111").unwrap() {
+        return CreateAccountType::NotCreateAccount;
+    }
+    let instruction_discriminator = &instruction_data[0..4];
+    if instruction_discriminator != [0x00, 0x00, 0x00, 0x00] {
+        return CreateAccountType::NotCreateAccount;
+    } else {
+        if signers_seeds.len() == 0 {
+            return CreateAccountType::Normal;
+        }
+        return CreateAccountType::PDA;
+    }
+}
+
 /// Call process instruction, common to both Rust and C
 fn cpi_common<S: SyscallInvokeSigned>(
     invoke_context: &mut InvokeContext,
@@ -1065,6 +1097,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
     signers_seeds_addr: u64,
     signers_seeds_len: u64,
     memory_mapping: &MemoryMapping,
+    instrumenter: &mut Instrumenter,
 ) -> Result<u64, Error> {
     // CPI entry.
     //
@@ -1086,6 +1119,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
         memory_mapping,
         invoke_context,
     )?;
+
     let is_loader_deprecated = *instruction_context
         .try_borrow_last_program_account(transaction_context)?
         .get_owner()
@@ -1093,6 +1127,58 @@ fn cpi_common<S: SyscallInvokeSigned>(
     let (instruction_accounts, program_indices) =
         invoke_context.prepare_instruction(&instruction, &signers)?;
     check_authorized_program(&instruction.program_id, &instruction.data, invoke_context)?;
+
+    // NovFuzz record creation syscall
+    let (account_infos, account_info_keys) = translate_account_infos(
+        account_infos_addr,
+        account_infos_len,
+        |account_info: &AccountInfo| account_info.key as *const _ as u64,
+        memory_mapping,
+        invoke_context,
+    )?;
+    let novafuzz_account_infos = account_info_keys.clone();
+    let novafuzz_instruction = &instruction;
+
+    // Store the seeds for instruction call.
+    let mut novafuzz_seeds = Vec::new();
+    // NovaFuzz: Translate the signers seeds part, gain two seeds
+    if signers_seeds_len > 0 {
+        let signers_seeds = translate_slice::<&[&[u8]]>(
+            memory_mapping,
+            signers_seeds_addr,
+            signers_seeds_len,
+            invoke_context.get_check_aligned(),
+        )?;
+        if signers_seeds.len() > MAX_SIGNERS {
+            return Err(Box::new(SyscallError::TooManySigners));
+        }
+        for signer_seeds in signers_seeds.iter() {
+            let untranslated_seeds = translate_slice::<&[u8]>(
+                memory_mapping,
+                signer_seeds.as_ptr() as *const _ as u64,
+                signer_seeds.len() as u64,
+                invoke_context.get_check_aligned(),
+            )?;
+            if untranslated_seeds.len() > MAX_SEEDS {
+                return Err(Box::new(InstructionError::MaxSeedLengthExceeded));
+            }
+            let seeds = untranslated_seeds
+                .iter()
+                .map(|untranslated_seed| {
+                    translate_slice::<u8>(
+                        memory_mapping,
+                        untranslated_seed.as_ptr() as *const _ as u64,
+                        untranslated_seed.len() as u64,
+                        invoke_context.get_check_aligned(),
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            for seed in seeds.iter() {
+                let base58_seed = bs58::encode(seed).into_string();
+                novafuzz_seeds.push(base58_seed);
+            }
+        }
+    }
 
     let mut accounts = S::translate_accounts(
         &instruction_accounts,
@@ -1117,6 +1203,19 @@ fn cpi_common<S: SyscallInvokeSigned>(
     // re-bind to please the borrow checker
     let transaction_context = &invoke_context.transaction_context;
     let instruction_context = transaction_context.get_current_instruction_context()?;
+
+    // NovaFuzz: noraml CPI exit, but start storing the NovaFuzz record.
+    let create_account_type = novafuzz_check_create_account(
+        &novafuzz_instruction.program_id,
+        &novafuzz_instruction.data,
+        &novafuzz_seeds,
+    );
+
+    if let CreateAccountType::PDA = create_account_type {
+        println!("create pda");
+    } else if let CreateAccountType::Normal = create_account_type {
+        println!("create normal");
+    }
 
     // CPI exit.
     //
@@ -1143,7 +1242,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
             }
         }
     }
-
+    println!("direct mapping: {:?}", direct_mapping);
     for (index_in_caller, caller_account) in accounts.iter_mut() {
         if let Some(caller_account) = caller_account {
             let mut callee_account = instruction_context
@@ -1155,6 +1254,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
                 caller_account,
                 &mut callee_account,
                 direct_mapping,
+                instrumenter,
             )?;
         }
     }
@@ -1291,6 +1391,7 @@ fn update_caller_account(
     caller_account: &mut CallerAccount,
     callee_account: &mut BorrowedAccount<'_>,
     direct_mapping: bool,
+    instrumenter: &mut Instrumenter, //NovaFuzz: add instrumenter
 ) -> Result<(), Error> {
     *caller_account.lamports = callee_account.get_lamports();
     *caller_account.owner = *callee_account.get_owner();
@@ -1302,6 +1403,8 @@ fn update_caller_account(
             caller_account.vm_data_addr,
             caller_account.original_data_len,
         )? {
+            // Austin comment: This part should be checking the memory layout?
+
             // Since each instruction account is directly mapped in a memory region with a *fixed*
             // length, upon returning from CPI we must ensure that the current capacity is at least
             // the original length (what is mapped in memory), so that the account's memory region
@@ -1429,6 +1532,22 @@ fn update_caller_account(
         }
         // this is the len field in the AccountInfo::data slice
         *caller_account.ref_to_len_in_vm.get_mut()? = post_len as u64;
+        // NovaFuzz: process the vm_addr for the caller account
+        println!("caller_account.vm_data_addr: {:?}", caller_account.vm_data_addr);
+        println!("caller_account.prev_len: {:?}", prev_len);
+        println!("caller_account.post_len: {:?}", post_len);
+        for i in 0..post_len {
+            // print the vm_addr for the caller account, in hex format
+            // println!("caller_account.vm_data_addr[{}]: {:x}", i, caller_account.vm_data_addr+i as u64);
+            let realloc_addr = caller_account.vm_data_addr+i as u64;
+            let attribute = instrumenter.semantic_input.mapping.get(&(realloc_addr - ebpf::MM_INPUT_START));
+            if attribute.is_some() {
+                instrumenter.data_extractor.insert(address_mapping(realloc_addr, 1)[0], attribute.unwrap().clone());
+            }else{
+                println!("syscall/cpi.rs/update_caller_account: caller_account attribute is none");
+            }
+        }
+        println!("data_extractor: {:?}", instrumenter.data_extractor.len());
 
         // this is the len field in the serialized parameters
         let serialized_len_ptr = translate_type_mut::<u64>(

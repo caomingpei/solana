@@ -1335,7 +1335,11 @@ fn execute<'a, 'b: 'a>(
     #[cfg(any(target_os = "windows", not(target_arch = "x86_64")))]
     let use_jit = false;
     #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+    #[cfg(feature = "rbpf_jit")]
     let use_jit = executable.get_compiled_program().is_some();
+    #[cfg(not(feature = "rbpf_jit"))]
+    let use_jit = false;
+
     let direct_mapping = invoke_context
         .feature_set
         .is_active(&bpf_account_data_direct_mapping::id());

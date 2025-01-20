@@ -363,7 +363,7 @@ fn load_program<'a>(
         })
     }
     .unwrap();
-    #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+    #[cfg(all(not(target_os = "windows"), target_arch = "x86_64", feature = "rbpf_jit"))]
     verified_executable.jit_compile().unwrap();
     unsafe {
         std::mem::transmute::<Executable<InvokeContext<'static>>, Executable<InvokeContext<'a>>>(
