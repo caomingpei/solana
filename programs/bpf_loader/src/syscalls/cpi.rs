@@ -1547,16 +1547,18 @@ fn update_caller_account(
                 .semantic_input
                 .mapping
                 .get(&(realloc_addr - ebpf::MM_INPUT_START));
-            if attribute.is_some() {
-                instrumenter.data_extractor.insert(
-                    address_mapping(realloc_addr, 1)[0],
-                    attribute.unwrap().clone(),
-                );
+            if let Some(attr) = attribute {
+                instrumenter
+                    .struct_record
+                    .add_update_data(address_mapping(realloc_addr, 1)[0], attr.clone());
             } else {
                 println!("syscall/cpi.rs/update_caller_account: caller_account attribute is none");
             }
         }
-        println!("data_extractor: {:?}", instrumenter.data_extractor.len());
+        println!(
+            "data_extractor: {:?}",
+            instrumenter.struct_record.data_extractor.len()
+        );
 
         // this is the len field in the serialized parameters
         let serialized_len_ptr = translate_type_mut::<u64>(
