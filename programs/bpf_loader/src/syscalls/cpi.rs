@@ -1072,7 +1072,7 @@ enum CreateAccountType {
 fn novafuzz_check_create_account(
     program_id: &Pubkey,
     instruction_data: &[u8],
-    signers_seeds: &[String],
+    signers_seeds: &Vec<Vec<u8>>,
 ) -> CreateAccountType {
     if *program_id != Pubkey::from_str("11111111111111111111111111111111").unwrap() {
         return CreateAccountType::NotCreateAccount;
@@ -1081,7 +1081,7 @@ fn novafuzz_check_create_account(
     if instruction_discriminator != [0x00, 0x00, 0x00, 0x00] {
         return CreateAccountType::NotCreateAccount;
     } else {
-        if signers_seeds.len() == 0 {
+        if signers_seeds.is_empty() {
             return CreateAccountType::Normal;
         }
         return CreateAccountType::PDA;
@@ -1140,7 +1140,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
     let novafuzz_instruction = &instruction;
 
     // Store the seeds for instruction call.
-    let mut novafuzz_seeds = Vec::new();
+    // let mut novafuzz_seeds = Vec::new();
     // NovaFuzz: Translate the signers seeds part, gain two seeds
     if signers_seeds_len > 0 {
         let signers_seeds = translate_slice::<&[&[u8]]>(
@@ -1174,8 +1174,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
             for seed in seeds.iter() {
-                let base58_seed = bs58::encode(seed).into_string();
-                novafuzz_seeds.push(base58_seed);
+                instrumenter.struct_record.add_pda_seed(seed.to_vec());
             }
         }
     }
@@ -1204,11 +1203,12 @@ fn cpi_common<S: SyscallInvokeSigned>(
     let transaction_context = &invoke_context.transaction_context;
     let instruction_context = transaction_context.get_current_instruction_context()?;
 
-    // NovaFuzz: noraml CPI exit, but start storing the NovaFuzz record.
+    // NovaFuzz: normal CPI exit, but start storing the NovaFuzz record.
+    let novafuzz_singers = &instrumenter.struct_record.pda_seeds;
     let create_account_type = novafuzz_check_create_account(
         &novafuzz_instruction.program_id,
         &novafuzz_instruction.data,
-        &novafuzz_seeds,
+        novafuzz_singers,
     );
 
     if let CreateAccountType::PDA = create_account_type {
@@ -1533,17 +1533,26 @@ fn update_caller_account(
         // this is the len field in the AccountInfo::data slice
         *caller_account.ref_to_len_in_vm.get_mut()? = post_len as u64;
         // NovaFuzz: process the vm_addr for the caller account
-        println!("caller_account.vm_data_addr: {:?}", caller_account.vm_data_addr);
+        println!(
+            "caller_account.vm_data_addr: {:?}",
+            caller_account.vm_data_addr
+        );
         println!("caller_account.prev_len: {:?}", prev_len);
         println!("caller_account.post_len: {:?}", post_len);
         for i in 0..post_len {
             // print the vm_addr for the caller account, in hex format
             // println!("caller_account.vm_data_addr[{}]: {:x}", i, caller_account.vm_data_addr+i as u64);
-            let realloc_addr = caller_account.vm_data_addr+i as u64;
-            let attribute = instrumenter.semantic_input.mapping.get(&(realloc_addr - ebpf::MM_INPUT_START));
+            let realloc_addr = caller_account.vm_data_addr + i as u64;
+            let attribute = instrumenter
+                .semantic_input
+                .mapping
+                .get(&(realloc_addr - ebpf::MM_INPUT_START));
             if attribute.is_some() {
-                instrumenter.data_extractor.insert(address_mapping(realloc_addr, 1)[0], attribute.unwrap().clone());
-            }else{
+                instrumenter.data_extractor.insert(
+                    address_mapping(realloc_addr, 1)[0],
+                    attribute.unwrap().clone(),
+                );
+            } else {
                 println!("syscall/cpi.rs/update_caller_account: caller_account attribute is none");
             }
         }
