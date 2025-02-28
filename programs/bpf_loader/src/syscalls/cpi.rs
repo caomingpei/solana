@@ -22,7 +22,6 @@ use {
 
 use bs58;
 use common::types::{Attribute, CommonAddress, TaintState};
-use instrument::taint::address_mapping;
 use instrument::Instrumenter;
 
 fn check_account_info_pointer(
@@ -1548,9 +1547,10 @@ fn update_caller_account(
                 .mapping
                 .get(&(realloc_addr - ebpf::MM_INPUT_START));
             if let Some(attr) = attribute {
-                instrumenter
-                    .struct_record
-                    .add_update_data(address_mapping(realloc_addr, 1)[0], attr.clone());
+                instrumenter.struct_record.add_update_data(
+                    CommonAddress::address_mapping(realloc_addr, 1)[0],
+                    attr.clone(),
+                );
             } else {
                 println!("syscall/cpi.rs/update_caller_account: caller_account attribute is none");
             }
