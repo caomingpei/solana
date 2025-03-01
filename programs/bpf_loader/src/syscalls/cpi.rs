@@ -1544,7 +1544,6 @@ fn update_caller_account(
             let realloc_addr = caller_account.vm_data_addr + i as u64;
             let attribute = instrumenter
                 .semantic_input
-                .mapping
                 .get(&(realloc_addr - ebpf::MM_INPUT_START));
             if let Some(attr) = attribute {
                 instrumenter.struct_record.add_update_data(
