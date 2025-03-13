@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 pub use self::{
     cpi::{SyscallInvokeSignedC, SyscallInvokeSignedRust},
     logging::{
@@ -59,10 +61,11 @@ use {
         mem::{align_of, size_of},
         slice::from_raw_parts_mut,
         str::{from_utf8, Utf8Error},
-        sync::Arc,
     },
     thiserror::Error as ThisError,
 };
+
+use instrument::Instrumenter;
 
 mod cpi;
 mod logging;
@@ -751,6 +754,7 @@ declare_builtin_function!(
         address_addr: u64,
         bump_seed_addr: u64,
         memory_mapping: &mut MemoryMapping,
+        instrumenter: &mut Instrumenter,
     ) -> Result<u64, Error> {
         let cost = invoke_context
             .get_compute_budget()
@@ -766,6 +770,9 @@ declare_builtin_function!(
         )?;
 
         let mut bump_seed = [std::u8::MAX];
+
+        println!("semantic input: {:?}", instrumenter.semantic_input.keys().len());
+
         for _ in 0..std::u8::MAX {
             {
                 let mut seeds_with_bump = seeds.to_vec();
@@ -797,6 +804,7 @@ declare_builtin_function!(
                     address.copy_from_slice(new_address.as_ref());
                     // NovaFuzzer: This is hack to monitor the try_find_program_address
                     println!("NovaFuzzer: try_find_program_address: {}", new_address);
+                    println!("NovaFuzzer: bump seeds: {:?}", seeds_with_bump);
 
                     return Ok(0);
                 }
