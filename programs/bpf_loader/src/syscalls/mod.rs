@@ -795,6 +795,9 @@ declare_builtin_function!(
                     }
                     *bump_seed_ref = bump_seed[0];
                     address.copy_from_slice(new_address.as_ref());
+                    // NovaFuzzer: This is hack to monitor the try_find_program_address
+                    println!("NovaFuzzer: try_find_program_address: {}", new_address);
+
                     return Ok(0);
                 }
             }
