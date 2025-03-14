@@ -771,8 +771,6 @@ declare_builtin_function!(
 
         let mut bump_seed = [std::u8::MAX];
 
-        println!("semantic input: {:?}", instrumenter.semantic_input.keys().len());
-
         for _ in 0..std::u8::MAX {
             {
                 let mut seeds_with_bump = seeds.to_vec();
