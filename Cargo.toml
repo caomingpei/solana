@@ -2,6 +2,7 @@
 inherits = "release"
 debug = true
 split-debuginfo = "packed"
+warnings = false
 
 [workspace]
 members = [
