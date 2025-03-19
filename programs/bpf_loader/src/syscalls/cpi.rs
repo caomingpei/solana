@@ -1141,6 +1141,7 @@ fn cpi_common<S: SyscallInvokeSigned>(
     // Store the seeds for instruction call.
     // let mut novafuzz_seeds = Vec::new();
     // NovaFuzz: Translate the signers seeds part, gain two seeds
+    let mut novafuzz_sign_seeds = Vec::new();
     if signers_seeds_len > 0 {
         let signers_seeds = translate_slice::<&[&[u8]]>(
             memory_mapping,
@@ -1172,10 +1173,14 @@ fn cpi_common<S: SyscallInvokeSigned>(
                     )
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
+
             for seed in seeds.iter() {
-                instrumenter.struct_record.add_pda_seed(seed.to_vec());
+                novafuzz_sign_seeds.push(seed.to_vec());
             }
         }
+        instrumenter
+            .struct_record
+            .add_pda_seed(novafuzz_sign_seeds.clone());
     }
 
     let mut accounts = S::translate_accounts(
@@ -1203,11 +1208,10 @@ fn cpi_common<S: SyscallInvokeSigned>(
     let instruction_context = transaction_context.get_current_instruction_context()?;
 
     // NovaFuzz: normal CPI exit, but start storing the NovaFuzz record.
-    let novafuzz_singers = &instrumenter.struct_record.pda_seeds;
     let create_account_type = novafuzz_check_create_account(
         &novafuzz_instruction.program_id,
         &novafuzz_instruction.data,
-        novafuzz_singers,
+        &novafuzz_sign_seeds,
     );
 
     if let CreateAccountType::PDA = create_account_type {
