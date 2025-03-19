@@ -801,7 +801,7 @@ declare_builtin_function!(
                     *bump_seed_ref = bump_seed[0];
                     address.copy_from_slice(new_address.as_ref());
                     // NovaFuzzer: This is hack to monitor the try_find_program_address
-                    println!("NovaFuzzer: try_find_program_address: {}", new_address);
+                    // println!("NovaFuzzer: try_find_program_address: {}", new_address);
                     // Convert Vec<&[u8]> to Vec<u8> by flattening all bytes into a single vector
                     let preserved_seeds: Vec<Vec<u8>> = seeds_with_bump.iter()
                         .map(|slice| slice.to_vec())
