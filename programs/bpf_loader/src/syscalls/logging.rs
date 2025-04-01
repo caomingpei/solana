@@ -11,6 +11,7 @@ declare_builtin_function!(
         _arg4: u64,
         _arg5: u64,
         memory_mapping: &mut MemoryMapping,
+        instrumenter: &mut Instrumenter,
     ) -> Result<u64, Error> {
         let cost = invoke_context
             .get_compute_budget()
