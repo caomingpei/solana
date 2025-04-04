@@ -18,6 +18,7 @@ declare_builtin_function!(
             .syscall_base_cost
             .max(len);
         consume_compute_meter(invoke_context, cost)?;
+        println!("NovaFuzzer: SyscallLog Rust Call");
 
         translate_string_and_do(
             memory_mapping,
@@ -26,6 +27,7 @@ declare_builtin_function!(
             invoke_context.get_check_aligned(),
             &mut |string: &str| {
                 stable_log::program_log(&invoke_context.get_log_collector(), string);
+                instrumenter.struct_record.add_log_info(string.to_string());
                 Ok(0)
             },
         )?;
